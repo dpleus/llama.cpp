@@ -39,6 +39,7 @@ class TensorNameMap:
         MODEL_TENSOR.OUTPUT: (
             "embed_out",                 # gptneox
             "lm_head",                   # gpt2 mpt falcon llama-hf baichuan
+            "transformer.lm_head",        # gpt2-alternative
             "output",                    # llama-pth bloom
             "word_embeddings_for_head",  # persimmon
         ),

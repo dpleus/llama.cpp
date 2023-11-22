@@ -324,8 +324,13 @@ class GPT2(Model):
         self.gguf_writer.add_name("GPT2")
         self.gguf_writer.add_context_length(self.hparams["n_positions"])
         self.gguf_writer.add_embedding_length(self.hparams["n_embd"])
-        self.gguf_writer.add_feed_forward_length(self.hparams["n_inner"])
         self.gguf_writer.add_block_count(block_count)
+
+        if "n_inner" in self.hparams:
+            self.gguf_writer.add_feed_forward_length(self.hparams["n_inner"])
+        else:
+            self.gguf_writer.add_feed_forward_length(self.hparams["n_embd"] * 4)
+
         self.gguf_writer.add_head_count(self.hparams["n_head"])
         self.gguf_writer.add_head_count_kv(self.hparams["n_head"])
         self.gguf_writer.add_layer_norm_eps(self.hparams["layer_norm_epsilon"])
@@ -336,12 +341,9 @@ class GPT2(Model):
     def write_tensors(self):
         block_count = self.hparams.get("n_layers", self.hparams.get("num_hidden_layers", self.hparams.get("n_layer")))
         tensor_map = gguf.get_tensor_name_map(self.model_arch, block_count)
-
         for name, data_torch in self.get_tensors():
             # we don't need these; twist - we need some of them
-            if name.endswith((
-                ".attention.masked_bias", ".attention.bias", ".attention.rotary_emb.inv_freq",
-                ".attn.masked_bias", ".attn.bias")):
+            if name.endswith((".attn.masked_bias", ".attn.bias")):
                 continue
 
             old_dtype = data_torch.dtype
@@ -351,6 +353,10 @@ class GPT2(Model):
                 data_torch = data_torch.to(torch.float32)
 
             data = data_torch.squeeze().numpy()
+
+            # Some GPT2 models have a naming without the prefix
+            if not name.startswith("transformer."):
+                name = f"transformer.{name}"
 
             # map tensor names
             new_name = tensor_map.get_name(name, try_suffixes=(".weight", ".bias"))
@@ -386,7 +392,8 @@ class GPT2(Model):
             self.gguf_writer.add_tensor(new_name, data)
 
     def set_vocab(self):
-        self._set_vocab_sentencepiece()
+        self._set_vocab_gpt2()
+
 
 class BloomModel(Model):
     def set_gguf_parameters(self):
@@ -902,10 +909,13 @@ class StableLMModel(Model):
         self.gguf_writer.add_embedding_length(hparams["hidden_size"])
         self.gguf_writer.add_block_count(block_count)
         self.gguf_writer.add_feed_forward_length(hparams["intermediate_size"])
-        self.gguf_writer.add_rope_dimension_count(int(hparams["rope_pct"] * (hparams["hidden_size"] // hparams["num_attention_heads"])))
+        self.gguf_writer.add_rope_dimension_count(
+            int(hparams["rope_pct"] * (hparams["hidden_size"] // hparams["num_attention_heads"])))
         self.gguf_writer.add_head_count(hparams["num_attention_heads"])
-        self.gguf_writer.add_parallel_residual(hparams["use_parallel_residual"] if "use_parallel_residual" in hparams else True)
+        self.gguf_writer.add_parallel_residual(
+            hparams["use_parallel_residual"] if "use_parallel_residual" in hparams else True)
         self.gguf_writer.add_layer_norm_eps(1e-5)
+
 
 ###### CONVERSION LOGIC ######
 
